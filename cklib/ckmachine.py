@@ -193,7 +193,6 @@ class HThreshold:
                 fprint(self.log, 'Total process count: {} ({:.4f} seconds)'.format(search_count, te - ts))
             else:
                 diff = max_f1[2] - base_f1
-#                 delta = self.momentom(prev_delta = delta, diff = diff, step = max_f1[1])
                 prev_th = self.h_threshold[max_f1[0]]
                 self.h_threshold[max_f1[0]] += max_f1[1]
                 
@@ -210,8 +209,6 @@ class HThreshold:
                     solstice = True
                     fprint(self.log, 'Threshold is looping --> process will be terminated')
                     fprint(self.log, 'Total process count: {} ({:.4f} seconds)'.format(search_count, te - ts))
-#                     fprint(self.log, 'Now: {}'.format(self.h_threshold))
-#                     fprint(self.log, 'Prv: {}'.format(prev_base))
                 else:
                     prev_base.append(self.h_threshold.copy())
                 
@@ -252,7 +249,6 @@ class LThreshold:
         self.initial_threshold = None
         self.step = None
         self.isInit = False
-#         self.delta = None
         self.verbose = verbose
         np.random.seed(random_state)
         
@@ -268,7 +264,6 @@ class LThreshold:
         self.sprobs = sprobs
         self.flows = flows
         self.classes = classes
-#         self.delta = delta
         self.y_true = y_true
         self.initial_threshold = initial_threshold
 #         self.l_threshold = [round((np.random.rand() % 0.05) + self.initial_threshold, 3) for c in self.classes]

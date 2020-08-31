@@ -14,14 +14,6 @@ import gc
 import pandas as pd
 import multiprocessing
 import os, sys
-import threading
-
-from sklearn.metrics import accuracy_score
-from sklearn.metrics import f1_score
-from sklearn.metrics import precision_score
-from sklearn.metrics import recall_score
-from sklearn.metrics import classification_report
-from sklearn.metrics import confusion_matrix
 
 from sklearn.preprocessing import LabelEncoder
 from sklearn.preprocessing import MinMaxScaler
@@ -30,7 +22,7 @@ from sklearn.ensemble import RandomForestClassifier
 import cklib.ckconst as ckc
 from cklib import cksess
 from cklib.ckstd import fprint
-from cklib.cktime import time_stamp
+from cklib.cktime import date
 from cklib import ckstd
 
 class Flow_Dataset:
@@ -72,9 +64,12 @@ class Flow_Dataset:
         self.pprobs_train_all = None
         self.pprobs_test = None
         self.pprobs_test_all = None
+
+        self.pkt_train_ptime_mean = None
+        self.pkt_test_ptime_mean = None
         
         if logging:
-            self.log = open('/tf/md0/thkim/log/' + time_stamp() + '.log', 'a')
+            self.log = open('/tf/md0/thkim/log/' + date() + '.log', 'a')
         else:
             self.log = None
         
@@ -175,8 +170,7 @@ class Flow_Dataset:
         ts = timeit.default_timer()
         self.ppreds_train = self.pclf.predict(self.pscaler.transform(self.train_dataset[:, 2:-1]))
         te = timeit.default_timer()
-#         packet_train_pred_time = te - ts
-#         packet_train_pred_time_mean = packet_train_pred_time / len(self.ppreds_train)
+        self.pkt_train_ptime_mean = (te - ts) / len(self.ppreds_train)
         self.ppreds_train = [self.ppreds_train[flow] for flow in self.train_flows]
         self.pprobs_train_all = self.pclf.predict_proba(self.pscaler.transform(self.train_dataset[:, 2:-1]))
         self.pprobs_train = np.max(self.pprobs_train_all, axis = 1)
@@ -188,8 +182,8 @@ class Flow_Dataset:
         ts = timeit.default_timer()
         self.ppreds_test = self.pclf.predict(self.pscaler.transform(self.test_dataset[:, 2:-1]))
         te = timeit.default_timer()
-#         packet_test_pred_time = te - ts
-#         packet_test_pred_time_mean = packet_test_pred_time / len(ppreds_test)
+        packet_test_pred_time = te - ts
+        self.pkt_test_ptime_mean = packet_test_pred_time / len(self.ppreds_test)
         self.ppreds_test = [self.ppreds_test[flow] for flow in self.test_flows]
         self.pprobs_test_all = self.pclf.predict_proba(self.pscaler.transform(self.test_dataset[:, 2:-1]))
         self.pprobs_test = np.max(self.pprobs_test_all, axis = 1)
@@ -219,3 +213,124 @@ class Flow_Dataset:
     
     def getTrainLabel(self):
         return self.train_session[:, -1]
+
+
+class Session_Dataset:
+    def __init__(self, split = 0.7, logging = True, random_state = None):
+        self.train_dataset = None
+        self.test_dataset = None
+
+        self.split_ratio = split
+        self.train_size = None
+        self.seed = random_state
+        self.skip_datas = []
+        
+        np.random.seed(random_state)
+        use_cores = multiprocessing.cpu_count() // 3 * 2
+        self.sclf = RandomForestClassifier(n_jobs = use_cores, random_state = random_state)
+        self.le = LabelEncoder()
+        self.scaler = MinMaxScaler()
+        
+        self.spreds_train = None
+        self.spreds_test = None
+
+        if logging:
+            self.log = open('./log/' + date() + '.log', 'a')
+        else:
+            self.log = None
+
+    def skip_data(self, *skip):
+        for word in skip:
+            self.skip_datas.append(word)
+        return '<Function: skip data>'
+
+    def read_csv(self, path, encoding = ckc.ISCX_DATASET_ENCODING):
+        fprint(self.log, 'Reading dataset: {}'.format(path))
+        ts = timeit.default_timer()
+        dataset = pd.read_csv(filepath_or_buffer = path, encoding = encoding).values
+        
+        fprint(self.log, 'Skip data: {}'.format(self.skip_datas))
+        for word in self.skip_datas:
+            dataset = dataset[dataset[:, -1] != word]
+            
+        flows = cksess.get_flows(dataset = dataset)
+        dataset = dataset[[flow[-1] for flow in flows]]
+        self.train_size = int(len(flows) * self.split_ratio)
+        flows = None
+        del flows
+        te = timeit.default_timer()
+        fprint(self.log, '---> Done ({:.4f} seconds)\n'.format(te - ts))
+        
+        fprint(self.log, 'Shuffling dataset by flows')
+        ts = timeit.default_timer()
+        np.random.shuffle(dataset)
+        te = timeit.default_timer()
+        fprint(self.log, '---> Done ({:.4f} seconds)\n'.format(te - ts))
+        
+        fprint(self.log, 'Creating training & test dataset')
+        ts = timeit.default_timer()
+        self.train_dataset = dataset[:self.train_size]
+        self.test_dataset = dataset[self.train_size:]
+        gc.collect()
+        te = timeit.default_timer()
+        fprint(self.log, '---> Done ({:.4f} seconds)\n'.format(te - ts))
+        
+        return '<Function: read & shuffling csv>'
+
+    def modelling(self):
+        fprint(self.log, 'Training label encoder and scaler')
+        ts = timeit.default_timer()
+        self.le.fit(self.train_dataset[:, -1])
+        self.le.fit(self.test_dataset[:, -1])
+        self.scaler.fit(self.train_dataset[:, 1:-1])
+        te = timeit.default_timer()
+        fprint(self.log, '---> Done ({:.4f} seconds)\n'.format(te - ts))
+        
+        fprint(self.log, 'Training random forest model')
+        ts = timeit.default_timer()
+
+        self.sclf.fit(
+            X = self.scaler.transform(self.train_dataset[:, 1:-1]),
+            y = self.le.transform(self.train_dataset[:, -1])
+        )
+        
+        gc.collect()
+        te = timeit.default_timer()
+        fprint(self.log, '---> Done ({:.4f} seconds)'.format(te - ts))
+        
+        return '<Function: modelling>'
+
+    def predict(self):
+        pred_ts = timeit.default_timer()
+        
+        fprint(self.log, 'Predict session training dataset')
+        ts = timeit.default_timer()
+        self.spreds_train = self.sclf.predict(self.sscaler.transform(self.train_session[:, 1:-1]))
+        te = timeit.default_timer()
+        fprint(self.log, 'Session training dataset predict time: {} seconds'.format(te - ts))
+
+        fprint(self.log, 'Predict session test dataset')
+        ts = timeit.default_timer()
+        self.spreds_test = self.sclf.predict(self.sscaler.transform(self.train_session[:, 1:-1]))
+        te = timeit.default_timer()
+        fprint(self.log, 'Session test dataset predict time: {} seconds'.format(te - ts))
+
+        return '<Function: predict>'
+
+    def getTrainPredict(self):
+        return self.spreds_train
+
+    def getTestPredict(self):
+        return self.spreds_test
+
+    def getLabelEncoder(self):
+        return self.le
+
+    def getTrainLabel(self):
+        return self.train_dataset[:, -1]
+
+    def getTestLabel(self):
+        return self.test_dataset[:, -1]
+
+    def getClassifier(self):
+        return self.sclf
