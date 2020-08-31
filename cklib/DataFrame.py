@@ -305,17 +305,15 @@ class Session_Dataset:
         
         fprint(self.log, 'Predict session training dataset')
         ts = timeit.default_timer()
-        self.spreds_train = self.sclf.predict(self.sscaler.transform(self.train_session[:, 1:-1]))
+        self.spreds_train = self.sclf.predict(self.scaler.transform(self.train_dataset[:, 1:-1]))
         te = timeit.default_timer()
         fprint(self.log, 'Session training dataset predict time: {} seconds'.format(te - ts))
 
         fprint(self.log, 'Predict session test dataset')
         ts = timeit.default_timer()
-        self.spreds_test = self.sclf.predict(self.sscaler.transform(self.train_session[:, 1:-1]))
+        self.spreds_test = self.sclf.predict(self.scaler.transform(self.train_dataset[:, 1:-1]))
         te = timeit.default_timer()
         fprint(self.log, 'Session test dataset predict time: {} seconds'.format(te - ts))
-
-        return '<Function: predict>'
 
     def getTrainPredict(self):
         return self.spreds_train
