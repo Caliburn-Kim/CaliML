@@ -456,4 +456,3 @@ class LThreshold:
     
     def getThreshold(self):
         return self.l_threshold
-    
