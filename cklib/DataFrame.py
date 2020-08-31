@@ -14,11 +14,13 @@ import gc
 import pandas as pd
 import multiprocessing
 import os, sys
+import joblib
 
 from sklearn.preprocessing import LabelEncoder
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.ensemble import RandomForestClassifier
 
+import cklib
 import cklib.ckconst as ckc
 from cklib import cksess
 from cklib.ckstd import fprint
@@ -311,9 +313,11 @@ class Session_Dataset:
 
         fprint(self.log, 'Predict session test dataset')
         ts = timeit.default_timer()
-        self.spreds_test = self.sclf.predict(self.scaler.transform(self.train_dataset[:, 1:-1]))
+        self.spreds_test = self.sclf.predict(self.scaler.transform(self.test_dataset[:, 1:-1]))
         te = timeit.default_timer()
         fprint(self.log, 'Session test dataset predict time: {} seconds'.format(te - ts))
+
+        return '<Function: predict>'
 
     def getTrainPredict(self):
         return self.spreds_train
@@ -332,3 +336,51 @@ class Session_Dataset:
 
     def getClassifier(self):
         return self.sclf
+    
+class SessionConverter:
+    def __init__(self, logging = True):
+        self.dataset = None
+        self.session = None
+        self.header = None
+        self.isSess = False
+        
+        if logging:
+            self.log = open('./log/' + date() + '.log', 'a')
+        else:
+            self.log = None
+        
+    def read_csv(self, path, encoding = ckc.ISCX_DATASET_ENCODING):
+        fprint(self.log, 'Read dataset: {}'.format(path))
+        ts = timeit.default_timer()
+        self.dataset = pd.read_csv(filepath_or_buffer = path, encoding = encoding)
+        self.header = self.dataset.columns.tolist()
+        self.dataset = self.dataset.values
+        te = timeit.default_timer()
+        fprint(self.log, '---> Done ({:.4f} seconds)'.format(te - ts))
+        
+        return '<Function: read csv>'
+    
+    def sessionization(self):
+        fprint(self.log, 'Convert packet dataset to session dataset')
+        ts = timeit.default_timer()
+        flows = cksess.get_flows(self.dataset)
+        self.session = self.dataset[[flow[-1] for flow in flows]]
+        self.isSess = True
+        te = timeit.default_timer()
+        fprint(self.log, '---> Done ({:.4f} seconds)'.format(te - ts))
+        
+        return '<Function: sessionization>'
+    
+    def getSessionDataset(self):
+        return self.session
+    
+    def save(self, path):
+        if self.isSess:
+            fprint(self.log, 'Writing session dataset at {}'.format(path))
+            ts = timeit.default_timer()
+            pd.DataFrame(data = self.session).to_csv(path, index = False, header = self.header, encoding = ckc.ISCX_DATASET_ENCODING)
+            te = timeit.default_timer()
+            fprint(self.log, '---> Done ({:.4f} seconds)'.format(te - ts))
+        else:
+            return 'ERROR: Not sessionization'
+        return '<Function: Save session>'
