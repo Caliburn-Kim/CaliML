@@ -19,6 +19,10 @@ import joblib
 from sklearn.preprocessing import LabelEncoder
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.ensemble import RandomForestClassifier
+from sklearn.ensemble import AdaBoostClassifier
+from sklearn.ensemble import GradientBoostingClassifier
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.tree import ExtraTreeClassifier
 
 import cklib
 import cklib.ckconst as ckc
@@ -218,7 +222,7 @@ class Flow_Dataset:
 
 
 class Session_Dataset:
-    def __init__(self, split = 0.7, logging = True, random_state = None):
+    def __init__(self, split = 0.7, clf = 'rf', logging = True, random_state = None):
         self.train_dataset = None
         self.test_dataset = None
 
@@ -228,8 +232,19 @@ class Session_Dataset:
         self.skip_datas = []
         
         np.random.seed(random_state)
-        use_cores = multiprocessing.cpu_count() // 3 * 2
-        self.sclf = RandomForestClassifier(n_jobs = use_cores, random_state = random_state)
+        use_cores = multiprocessing.cpu_count() // 4 * 3
+        if clf == 'rf':
+            self.sclf = RandomForestClassifier(n_jobs = use_cores, random_state = random_state)
+        elif clf == 'dt':
+            self.sclf = DecisionTreeClassifier(random_state = random_state)
+        elif clf == 'et':
+            self.sclf = ExtraTreeClassifier(random_state = random_state)
+        elif clf == 'adt':
+            self.sclf = AdaBoostClassifier(base_estimator = DecisionTreeClassifier(random_state = random_state), random_state = random_state)
+        elif clf == 'arf':
+            self.sclf = AdaBoostClassifier(base_estimator = RandomForestClassifier(n_jobs = use_cores, random_state = random_state), random_state = random_state)
+        elif clf == 'gbt':
+            self.sclf = GradientBoostingClassifier(random_state = random_state)
         self.le = LabelEncoder()
         self.scaler = MinMaxScaler()
         
@@ -255,11 +270,7 @@ class Session_Dataset:
         for word in self.skip_datas:
             dataset = dataset[dataset[:, -1] != word]
             
-        flows = cksess.get_flows(dataset = dataset)
-        dataset = dataset[[flow[-1] for flow in flows]]
-        self.train_size = int(len(flows) * self.split_ratio)
-        flows = None
-        del flows
+        self.train_size = int(len(dataset) * self.split_ratio)
         te = timeit.default_timer()
         fprint(self.log, '---> Done ({:.4f} seconds)\n'.format(te - ts))
         
@@ -288,7 +299,7 @@ class Session_Dataset:
         te = timeit.default_timer()
         fprint(self.log, '---> Done ({:.4f} seconds)\n'.format(te - ts))
         
-        fprint(self.log, 'Training random forest model')
+        fprint(self.log, 'Training model')
         ts = timeit.default_timer()
 
         self.sclf.fit(
